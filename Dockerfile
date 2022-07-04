@@ -24,23 +24,27 @@ RUN curl --fail --location --silent --show-error "https://download.gocd.org/bina
 RUN unzip /tmp/go-agent-22.1.0-13913.zip -d /
 RUN mv /go-agent-22.1.0 /go-agent && chown -R ${UID}:0 /go-agent && chmod -R g=u /go-agent
 
-FROM docker.io/alpine:3.15
-
+FROM r.j3ss.co/img
+USER root
 LABEL gocd.version="22.1.0" \
-  description="GoCD agent based on docker.io/alpine:3.15" \
-  maintainer="ThoughtWorks, Inc. <support@thoughtworks.com>" \
-  url="https://www.gocd.org" \
+  description="GoCD agent based on r.j3ss.co/img" \
+  maintainer="Richard Kendall" \
+  url="https://www.richardjameskendall.com" \
   gocd.full.version="22.1.0-13913" \
   gocd.git.sha="f4c9c1650e2e27fe0a9962faa39536f94f57e297"
 
 ADD https://github.com/krallin/tini/releases/download/v0.19.0/tini-static-amd64 /usr/local/sbin/tini
 
+# add the root cert for private registry
+COPY rjkca.cer /usr/local/share/ca-certificates/rjkca.crt
+RUN cat /usr/local/share/ca-certificates/rjkca.crt >> /etc/ssl/certs/ca-certificates.crt
+
 # force encoding
 ENV LANG=en_US.UTF-8 LANGUAGE=en_US:en LC_ALL=en_US.UTF-8
 ENV GO_JAVA_HOME="/gocd-jre"
 
-ARG UID=1000
-ARG GID=1000
+ARG UID=1010
+ARG GID=1010
 
 RUN \
 # add mode and permissions for files we added above
@@ -51,6 +55,10 @@ RUN \
 # add user to root group for gocd to work on openshift
   adduser -D -u ${UID} -s /bin/bash -G root go && \
     apk add --no-cache libsasl && \
+# add go user idmap entries
+  mkdir -p /run/go/${UID} && \
+  chown -R go /run/go/${UID} && \
+  echo go:165536:65536 | tee /etc/subuid | tee /etc/subgid && \
   apk --no-cache upgrade && \
   apk add --no-cache nss git mercurial subversion openssh-client bash curl procps && \
   # install glibc and zlib for adoptopenjdk && \
@@ -106,4 +114,7 @@ RUN chown -R go:root /docker-entrypoint.d /go /godata /docker-entrypoint.sh \
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
+ENV USER go
+ENV HOME /home/go
+ENV XDG_RUNTIME_DIR=/run/go/${UID}
 USER go
